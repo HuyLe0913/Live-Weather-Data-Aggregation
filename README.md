@@ -16,7 +16,6 @@ The system is capable of:
 -   **Storage:** MinIO (S3), Apache Iceberg, MongoDB (or Cassandra)
 -   **Metadata/Catalog:** Hive Metastore
 -   **Query Engine:** Trino
--   **Authorization:** Open Policy Agent (OPA)
 -   **Visualization:** Apache Superset
 
 ## 3. General architecture
@@ -44,5 +43,4 @@ This project is implemented using the **Kappa Architecture**. This model offers 
 
 5.  **Querying & Visualization**
     -   `Trino`: A distributed SQL query engine that allows end-users (like Data Analysts) to execute complex analytical SQL queries directly on the Iceberg tables.
-    -   `Open Policy Agent (OPA)`: Integrates with Trino to enforce fine-grained data access policies, ensuring security.
     -   `Apache Superset`: A BI tool that connects to Trino, enabling users to build dashboards and dynamic charts to explore and visualize the analytical data.
