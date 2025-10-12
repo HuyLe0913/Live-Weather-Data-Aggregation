@@ -22,7 +22,7 @@ The system is capable of:
 ## 3. General architecture
 This project is implemented using the **Kappa Architecture**. This model offers a simpler and more efficient approach than the Lambda architecture by utilizing a single stream processing pipeline to handle all data.
 
-![Data Pipeline Architecture](./images/diagram.png)
+![Data Pipeline Architecture](./images/overview.png)
 
 ### Key Components
 
