@@ -1,0 +1,273 @@
+# version is obsolete in Docker Compose v2, removed to avoid warning
+
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+      - "29092:29092"
+    volumes:
+      - ./kafka/server.properties:/opt/kafka/config/server.properties:ro
+      - kafka_data:/var/lib/kafka/data
+    command: >
+      bash -c "
+      if [ ! -f /var/lib/kafka/data/.formatted ]; then
+        CLUSTER_ID=$$(/opt/kafka/bin/kafka-storage.sh random-uuid)
+        /opt/kafka/bin/kafka-storage.sh format -t $$CLUSTER_ID -c /opt/kafka/config/server.properties --ignore-formatted
+        touch /var/lib/kafka/data/.formatted
+      fi &&
+      /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
+      "
+    environment:
+      KAFKA_CLUSTER_ID: ""
+    networks:
+      - weather-network
+    restart: unless-stopped
+  # kafka-ui:
+  #   image: provectuslabs/kafka-ui:latest
+  #   container_name: kafka-ui
+  #   ports:
+  #     - "8888:8888"
+  #   environment:
+  #     KAFKA_CLUSTERS_0_NAME: local
+  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   networks:
+  #     - weather-network
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: weather_db
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - weather-network
+
+  # Optional: MinIO for S3-compatible storage
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: rootuser
+      MINIO_ROOT_PASSWORD: rootpass123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - weather-network
+
+  # Data Collector Service
+  data-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.data_collector
+    container_name: weather-data-collector
+    env_file:
+      - .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - MONGODB_URI=mongodb://mongodb:27017
+    depends_on:
+      - kafka
+      - mongodb
+    networks:
+      - weather-network
+    restart: unless-stopped
+
+  # Apache NiFi - Data Flow Management
+  nifi:
+    image: apache/nifi:latest
+    container_name: nifi
+    ports:
+      - "8080:8080"  # NiFi UI
+      - "8443:8443"  # HTTPS (optional)
+    environment:
+      - SINGLE_USER_CREDENTIALS_USERNAME=admin
+      - SINGLE_USER_CREDENTIALS_PASSWORD=ctsBtRBKHRAx69EqUghvvgEvjnaLjFEB
+      - NIFI_WEB_HTTP_PORT=8080
+      - NIFI_WEB_HTTP_HOST=127.0.0.1
+      - NIFI_CLUSTER_IS_NODE=false
+      - NIFI_CLUSTER_NODE_PROTOCOL_PORT=8082
+      - NIFI_ZK_CONNECT_STRING=
+      - NIFI_ELECTION_MAX_WAIT=30 sec
+      - NIFI_SENSITIVE_PROPS_KEY=
+      - NIFI_WEB_PROXY_HOST=nifi:8080
+      - NIFI_SECURITY_USER_LOGIN_IDENTITY_PROVIDER=single-user-provider
+      - NIFI_SECURITY_USER_AUTHORIZER=single-user-authorizer
+      - NIFI_SECURITY_REQUIRE_LOGIN=false
+    volumes:
+      - nifi_data:/opt/nifi/nifi-current/conf
+      - nifi_flowfile:/opt/nifi/nifi-current/flowfile_repository
+      - nifi_content:/opt/nifi/nifi-current/content_repository
+      - nifi_provenance:/opt/nifi/nifi-current/provenance_repository
+      - nifi_state:/opt/nifi/nifi-current/state
+      - ./nifi:/opt/nifi/imported_flows:ro
+    depends_on:
+      - kafka
+    networks:
+      - weather-network
+    restart: unless-stopped
+
+  # Hive Metastore Database (PostgreSQL)
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - weather-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Hive Metastore Service
+  hive-metastore:
+    image: bde2020/hive-metastore-postgresql:latest
+    container_name: hive-metastore
+    ports:
+      - "9083:9083"  # Thrift port for Hive Metastore
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      SERVICE_OPTS: "-Xmx2048m"
+      METASTORE_DB_HOSTNAME: postgres
+      METASTORE_DB_PORT: 5432
+      METASTORE_DB_NAME: metastore
+      METASTORE_DB_USER: hive
+      METASTORE_DB_PASSWORD: hive
+    volumes:
+      - ./hive/metastore-site.xml:/opt/hive/conf/metastore-site.xml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - weather-network
+    restart: unless-stopped
+
+  # Trino - SQL Query Engine
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./trino:/etc/trino/catalog
+    depends_on:
+      - postgres
+      - minio
+      - hive-metastore
+    networks:
+      - weather-network
+    restart: unless-stopped
+
+  # Apache Iceberg REST Catalog Server
+  iceberg-rest:
+    image: tabulario/iceberg-rest:latest
+    container_name: iceberg-rest
+    ports:
+      - "8181:8181"
+    environment:
+      - CATALOG_WAREHOUSE=s3://weather-data/warehouse
+      - CATALOG_BACKEND=jdbc
+      - CATALOG_JDBC_CONNECTION_URI=jdbc:postgresql://postgres:5432/iceberg_catalog
+      - CATALOG_JDBC_DRIVER=org.postgresql.Driver
+      - CATALOG_JDBC_USER=hive
+      - CATALOG_JDBC_PASSWORD=hive
+      - CATALOG_S3_ENDPOINT=http://minio:9000
+      - CATALOG_S3_ACCESS_KEY_ID=rootuser
+      - CATALOG_S3_SECRET_ACCESS_KEY=rootpass123
+      - CATALOG_S3_PATH_STYLE_ACCESS=true
+    depends_on:
+      - postgres
+      - minio
+    networks:
+      - weather-network
+  init-iceberg:
+    image: minio/mc
+    volumes:
+      - ./iceberg/init-catalog.sh:/init-catalog.sh
+    entrypoint: sh /init-catalog.sh
+    depends_on:
+      - minio
+      - iceberg-rest
+    networks:
+      - weather-network
+    restart: "no"
+  # Apache Spark - Data Processing Engine
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8081:8080"
+      - "7077:7077"
+    networks:
+      - weather-network
+
+  spark-worker:
+    image: apache/spark:3.5.1
+    container_name: spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      - spark-master
+    networks:
+      - weather-network
+  # Apache Superset - BI and Visualization
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    ports:
+      - "8088:8088"
+    environment:
+      - SUPERSET_SECRET_KEY=your_secret_key
+      - SUPERSET_LOAD_EXAMPLES=no
+    depends_on:
+      - postgres
+    command: >
+      bash -c "
+      superset db upgrade &&
+      superset fab create-admin \
+        --username admin \
+        --firstname Admin \
+        --lastname User \
+        --email admin@example.com \
+        --password admin &&
+      superset init &&
+      gunicorn -w 4 -k gevent --timeout 120 -b 0.0.0.0:8088 'superset.app:create_app()'
+      "
+
+
+volumes:
+  mongodb_data:
+  minio_data:
+  kafka_data:
+  nifi_data:
+  nifi_flowfile:
+  nifi_content:
+  nifi_provenance:
+  nifi_state:
+  postgres_data:
+  superset_data:
+
+networks:
+  weather-network:
+    driver: bridge
+
