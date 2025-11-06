@@ -142,7 +142,7 @@ def main():
                             print(f"  [DEBUG] Data: {json.dumps(transformed_data, indent=2)}")
                 
                 # Small delay between cities
-                time.sleep(2)
+                # time.sleep(2)
             
             print(f"\n[{datetime.now()}] Waiting {COLLECTION_INTERVAL} seconds before next collection cycle...")
             time.sleep(COLLECTION_INTERVAL)

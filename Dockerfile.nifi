@@ -1,0 +1,5 @@
+# Start from the official NiFi image
+FROM apache/nifi:latest
+
+# Copy your local flow file and rename it to what NiFi expects
+COPY ./nifi/flow.json.gz /opt/nifi/nifi-current/conf/flow.json.gz
