@@ -107,7 +107,7 @@ services:
       - NIFI_SECURITY_USER_AUTHORIZER=single-user-authorizer
       - NIFI_SECURITY_REQUIRE_LOGIN=false
     volumes:
-      - ./nifi/conf:/opt/nifi/nifi-current/conf
+      - ./nifi/flow.json.gz:/opt/nifi/nifi-current/conf/flow.json.gz
       - nifi_flowfile:/opt/nifi/nifi-current/flowfile_repository
       - nifi_content:/opt/nifi/nifi-current/content_repository
       - nifi_provenance:/opt/nifi/nifi-current/provenance_repository
