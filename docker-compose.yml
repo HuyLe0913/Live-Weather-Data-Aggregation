@@ -25,18 +25,17 @@ services:
     networks:
       - weather-network
     restart: unless-stopped
-  # kafka-ui:
-  #   image: provectuslabs/kafka-ui:latest
-  #   container_name: kafka-ui
-  #   ports:
-  #     - "8888:8888"
-  #   environment:
-  #     KAFKA_CLUSTERS_0_NAME: local
-  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   networks:
-  #     - weather-network
+  kafdrop:
+      image: obsidiandynamics/kafdrop:latest
+      container_name: kafdrop
+      ports:
+        - "9000:9000"
+      environment:
+        - KAFKA_BROKERCONNECT=kafka:9092
+      networks:
+        - weather-network
+      depends_on:
+        - kafka
   mongodb:
     image: mongo:latest
     container_name: mongodb
@@ -54,7 +53,7 @@ services:
     image: minio/minio:latest
     container_name: minio
     ports:
-      - "9000:9000"
+      - "9002:9000"
       - "9001:9001"
     environment:
       MINIO_ROOT_USER: rootuser
