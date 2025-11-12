@@ -5,7 +5,7 @@ Writes processed weather data to MongoDB for serving path (OLTP).
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import ConnectionFailure, BulkWriteError
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 import json
 from config import Config
 
@@ -118,7 +118,7 @@ class MongoDBWriter:
             print(f"Error in bulk upsert: {str(e)}")
             return False
     
-    def get_latest_weather(self, city: str = None) -> Dict[str, Any] | List[Dict[str, Any]]:
+    def get_latest_weather(self, city: str = None) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """
         Get latest weather data.
         

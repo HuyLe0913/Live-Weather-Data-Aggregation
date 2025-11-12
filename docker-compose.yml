@@ -87,7 +87,7 @@ services:
   nifi:
     build:
       context: .
-      dockerfile: Dockerfile.nifi
+      dockerfile: Dockerfile.nifi 
     container_name: nifi
     ports:
       - "8082:8082"  # NiFi UI
@@ -97,17 +97,17 @@ services:
       - SINGLE_USER_CREDENTIALS_PASSWORD=ctsBtRBKHRAx69EqUghvvgEvjnaLjFEB
       - NIFI_WEB_HTTP_PORT=8082
       - NIFI_WEB_HTTP_HOST=0.0.0.0
+      - NIFI_SECURITY_USER_LOGIN_IDENTITY_PROVIDER=single-user-provider
+      - NIFI_SECURITY_USER_AUTHORIZER=single-user-authorizer
+      
+      - NIFI_SENSITIVE_PROPS_KEY=MySuperSecretKeyForNiFi12345!
+
       - NIFI_CLUSTER_IS_NODE=false
       - NIFI_CLUSTER_NODE_PROTOCOL_PORT=8083
       - NIFI_ZK_CONNECT_STRING=
       - NIFI_ELECTION_MAX_WAIT=30 sec
-      - NIFI_SENSITIVE_PROPS_KEY=
       - NIFI_WEB_PROXY_HOST=nifi:8082
-      - NIFI_SECURITY_USER_LOGIN_IDENTITY_PROVIDER=single-user-provider
-      - NIFI_SECURITY_USER_AUTHORIZER=single-user-authorizer
-      - NIFI_SECURITY_REQUIRE_LOGIN=false
     volumes:
-      - ./nifi/flow.json.gz:/opt/nifi/nifi-current/conf/flow.json.gz
       - nifi_flowfile:/opt/nifi/nifi-current/flowfile_repository
       - nifi_content:/opt/nifi/nifi-current/content_repository
       - nifi_provenance:/opt/nifi/nifi-current/provenance_repository
@@ -170,7 +170,7 @@ services:
     ports:
       - "8090:8080"
     volumes:
-      - ./trino:/etc/trino/catalog
+      - ./trino/catalog:/etc/trino/catalog
     depends_on:
       - postgres
       - minio
@@ -231,6 +231,39 @@ services:
       - spark-master
     networks:
       - weather-network
+  # Spark Streaming Application
+  spark-streaming-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-streaming-app
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_APP_NAME=WeatherDataStreaming
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=weather-data
+      - KAFKA_CONSUMER_GROUP=weather-spark-consumer
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=rootuser
+      - MINIO_SECRET_KEY=rootpass123
+      - HIVE_METASTORE_URI=thrift://hive-metastore:9083
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=weather_db
+      - MONGODB_COLLECTION=current_weather
+      - STREAMING_CHECKPOINT_LOCATION=/tmp/spark-checkpoints
+    volumes:
+      - ./spark:/opt/spark/work-dir/spark
+      - spark_checkpoints:/tmp/spark-checkpoints
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+      - mongodb
+      - minio
+      - hive-metastore
+    networks:
+      - weather-network
+    restart: unless-stopped
   # Apache Superset - BI and Visualization
   superset:
     image: apache/superset:latest
@@ -267,6 +300,8 @@ volumes:
   nifi_state:
   postgres_data:
   superset_data:
+  spark_checkpoints:
+
 
 networks:
   weather-network:

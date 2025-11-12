@@ -49,11 +49,10 @@ class Config:
     # Spark Configuration
     SPARK_APP_NAME = os.environ.get("SPARK_APP_NAME", "WeatherDataStreaming")
     SPARK_MASTER = os.environ.get("SPARK_MASTER", "local[*]")
-    
     # Streaming Configuration
     STREAMING_CHECKPOINT_LOCATION = os.environ.get(
-        "STREAMING_CHECKPOINT_LOCATION", 
-        "/tmp/weather-streaming-checkpoint"
+        "STREAMING_CHECKPOINT_LOCATION",
+        "/tmp/spark-checkpoints"
     )
     STREAMING_TRIGGER_INTERVAL = os.environ.get("STREAMING_TRIGGER_INTERVAL", "1 minute")
     WATERMARK_DELAY_THRESHOLD = os.environ.get("WATERMARK_DELAY_THRESHOLD", "10 minutes")

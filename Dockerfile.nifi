@@ -1,5 +1,19 @@
-# Start from the official NiFi image
+# Bắt đầu từ image NiFi chính thức
 FROM apache/nifi:latest
 
-# Copy your local flow file and rename it to what NiFi expects
-COPY ./nifi/flow.json.gz /opt/nifi/nifi-current/conf/flow.json.gz
+# --- 1. Chuyển sang user ROOT để có quyền ---
+USER root
+
+# 2. Sao chép file vào một vị trí TẠM THỜI
+#    (Hãy chắc chắn file này tồn tại ở ./nifi/flow.json.gz)
+COPY ./nifi/flow.json.gz /tmp/flow.json.gz
+
+# 3. Sửa quyền (chown VÀ chmod) trên file tạm thời
+RUN chown nifi:nifi /tmp/flow.json.gz && \
+    chmod 666 /tmp/flow.json.gz
+
+# 4. DI CHUYỂN file đã sửa quyền vào vị trí cuối cùng
+RUN mv /tmp/flow.json.gz /opt/nifi/nifi-current/conf/flow.json.gz
+
+# 5. Chuyển về user 'nifi' để chạy ứng dụng
+USER nifi
