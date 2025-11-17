@@ -35,8 +35,8 @@ docker exec -it kafka kafka-topics.sh \
   --list
 
 # Describe topic
-docker exec -it kafka kafka-topics.sh \
-  --bootstrap-server localhost:9092 \
+docker exec -it kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka:29092 \
   --describe \
   --topic weather-data
 ```
@@ -48,6 +48,15 @@ docker exec -it kafka kafka-topics.sh \
 docker exec -it kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic weather-data \
+  --from-beginning
+```
+
+```bash
+# Try consuming from a specific partition
+docker exec -it kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka:9092 \
+  --topic weather-data \
+  --partition 0 \
   --from-beginning
 ```
 
