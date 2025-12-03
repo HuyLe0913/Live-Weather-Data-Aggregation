@@ -33,13 +33,13 @@
   <!-- Thrift Server Configuration -->
   <property>
     <name>hive.metastore.thrift.uris</name>
-    <value>thrift://hive-metastore:9083</value>
+    <value>thrift://0.0.0.0:9083</value>
     <description>Thrift URI for the remote metastore</description>
   </property>
   
   <property>
     <name>hive.metastore.uris</name>
-    <value>thrift://hive-metastore:9083</value>
+    <value>thrift://0.0.0.0:9083</value>
     <description>Thrift URI for the remote metastore</description>
   </property>
   
@@ -94,11 +94,5 @@
     <description>Enable automatic schema migration</description>
   </property>
   
-  <!-- Iceberg Support -->
-  <property>
-    <name>hive.metastore.catalog.default</name>
-    <value>iceberg</value>
-    <description>Default catalog type</description>
-  </property>
 </configuration>
 
