@@ -1,0 +1,30 @@
+FROM apache/spark:3.5.1
+
+USER root
+
+# Install Python dependencies
+COPY requirements.txt /opt/spark/requirements.txt
+RUN pip3 install --no-cache-dir -r /opt/spark/requirements.txt
+
+# Copy application files
+COPY config.py /opt/spark/work-dir/config.py
+COPY schemas.py /opt/spark/work-dir/schemas.py
+COPY mongodb_writer.py /opt/spark/work-dir/mongodb_writer.py
+COPY spark/spark_streaming_app.py /opt/spark/work-dir/spark_streaming_app.py
+
+# Set working directory
+WORKDIR /opt/spark/work-dir
+
+# Download required JARs with all dependencies
+RUN cd /opt/spark/jars && \
+    wget https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.1/spark-sql-kafka-0-10_2.12-3.5.1.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.1/kafka-clients-3.5.1.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.1/spark-token-provider-kafka-0-10_2.12-3.5.1.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.4.3/iceberg-spark-runtime-3.5_2.12-1.4.3.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && \
+    wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
+
+USER spark
+
+CMD ["python3", "spark_streaming_app.py"]

@@ -1,0 +1,12 @@
+FROM apache/nifi:latest
+
+USER root
+
+COPY ./nifi/flow.json.gz /tmp/flow.json.gz
+
+RUN chown nifi:nifi /tmp/flow.json.gz && \
+    chmod 666 /tmp/flow.json.gz
+
+RUN mv /tmp/flow.json.gz /opt/nifi/nifi-current/conf/flow.json.gz
+
+USER nifi
