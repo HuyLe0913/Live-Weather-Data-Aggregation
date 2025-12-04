@@ -206,13 +206,15 @@ services:
     networks:
       - weather-network
   init-iceberg:
-    image: minio/mc
-    volumes:
-      - ./iceberg/init-catalog.sh:/init-catalog.sh
-    entrypoint: sh /init-catalog.sh
+    build:
+      context: .
+      dockerfile: Dockerfile.iceberg_init
+    container_name: init-iceberg
     depends_on:
-      - minio
-      - iceberg-rest
+      hive-metastore:
+        condition: service_healthy
+      minio:
+        condition: service_started
     networks:
       - weather-network
     restart: "no"
@@ -286,8 +288,9 @@ services:
     restart: unless-stopped
   # Apache Superset - BI and Visualization
   superset:
-    image: apache/superset:latest
-    container_name: superset
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
     ports:
       - "8088:8088"
     environment:
@@ -298,15 +301,12 @@ services:
     command: >
       bash -c "
       superset db upgrade &&
-      superset fab create-admin \
-        --username admin \
-        --firstname Admin \
-        --lastname User \
-        --email admin@example.com \
-        --password admin &&
+      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
       superset init &&
-      gunicorn -w 4 -k gevent --timeout 120 -b 0.0.0.0:8088 'superset.app:create_app()'
+      gunicorn -w 4 -k gthread --timeout 120 -b 0.0.0.0:8088 'superset.app:create_app()'
       "
+    networks:
+      - weather-network
 
 
 volumes:

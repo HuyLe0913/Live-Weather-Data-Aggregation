@@ -1,0 +1,30 @@
+FROM apache/spark:3.5.1
+
+USER root
+
+# 1. Install Curl (to download JARs)
+RUN apt-get update && \
+    apt-get install -y curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# 2. Setup Jars Directory
+ENV SPARK_JARS_DIR=/opt/spark/jars
+RUN mkdir -p ${SPARK_JARS_DIR}
+
+# 3. Download ONLY the JARs needed for Iceberg + MinIO (S3)
+# Iceberg Runtime for Spark 3.5
+RUN curl -L https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.5.0/iceberg-spark-runtime-3.5_2.12-1.5.0.jar -o ${SPARK_JARS_DIR}/iceberg-spark-runtime.jar
+
+# AWS S3 Connectors (Matching Spark 3.5.1 / Hadoop 3.3.4)
+RUN curl -L https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar -o ${SPARK_JARS_DIR}/hadoop-aws.jar
+RUN curl -L https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar -o ${SPARK_JARS_DIR}/aws-java-sdk-bundle.jar
+
+# 4. Copy the initialization script
+COPY iceberg/init_warehouse.py /app/init_warehouse.py
+
+USER spark
+
+# 5. Run the script using spark-submit
+CMD ["/opt/spark/bin/spark-submit", \
+     "--master", "local[*]", \
+     "/app/init_warehouse.py"]

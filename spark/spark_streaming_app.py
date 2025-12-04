@@ -10,13 +10,13 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import StringType
 import sys
 import os
+import pandas as pd
 
-# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
 from schemas import get_weather_raw_schema
-from mongodb_writer import MongoDBWriter
+from mongodb.mongodb_writer import MongoDBWriter
 
 def create_spark_session():
     """Create Spark session with Iceberg, Kafka, and Checkpointing support."""
@@ -39,45 +39,8 @@ def create_spark_session():
         .config("spark.sql.streaming.checkpointLocation", Config.STREAMING_CHECKPOINT_LOCATION) \
         .getOrCreate()
 
-def init_iceberg_resources(spark):
-    """Initialize Iceberg Database and Table with correct S3 location."""
-    print("Initializing Iceberg Database and Table...")
-    
-    try:
-        # 1. Clean up potential bad state (Optional, but good for dev)
-        spark.sql("DROP DATABASE IF EXISTS spark_catalog.weather_db CASCADE")
-        
-        # 2. Create Database with explicit S3 Location
-        spark.sql(f"""
-            CREATE DATABASE IF NOT EXISTS spark_catalog.weather_db
-            LOCATION 's3a://weather-data/warehouse/weather_db'
-        """)
-        
-        # 3. Create Table
-        spark.sql("""
-            CREATE TABLE IF NOT EXISTS spark_catalog.weather_db.hourly_aggregates (
-                window_start TIMESTAMP,
-                window_end TIMESTAMP,
-                city STRING,
-                country STRING,
-                avg_temperature DOUBLE,
-                max_temperature DOUBLE,
-                min_temperature DOUBLE,
-                avg_humidity DOUBLE,
-                avg_pressure DOUBLE,
-                avg_wind_speed DOUBLE,
-                record_count LONG,
-                processed_at TIMESTAMP
-            ) USING iceberg
-            PARTITIONED BY (city)
-        """)
-        print("✓ Iceberg table initialized successfully in S3!")
-        
-    except Exception as e:
-        print(f"⚠ Warning during initialization: {e}")
-        # We don't exit here; we let the stream try to run even if init had issues.
-
 def process_kafka_stream(spark):
+    """Read and process Kafka stream."""
     kafka_df = spark \
         .readStream \
         .format("kafka") \
@@ -101,6 +64,7 @@ def process_kafka_stream(spark):
     return weather_df
 
 def write_to_iceberg_analytics(weather_df):
+    """Path 1: OLAP - Write aggregated data to Iceberg."""
     hourly_agg = weather_df \
         .withWatermark("event_timestamp", "10 minutes") \
         .groupBy(
@@ -144,10 +108,19 @@ def write_to_iceberg_analytics(weather_df):
     return query
 
 def write_to_mongodb_serving(weather_df):
+    """Path 2: OLTP - Write latest weather to MongoDB."""
     def write_batch_to_mongo(batch_df, batch_id):
         try:
             if batch_df.isEmpty(): return
-            records = batch_df.toPandas().to_dict('records')
+            
+            # Convert to Pandas
+            pdf = batch_df.toPandas()
+            records = pdf.to_dict('records')
+            for record in records:
+                for key, value in record.items():
+                    if pd.isnull(value):
+                        record[key] = None
+
             if records:
                 mongo_writer = MongoDBWriter()
                 mongo_writer.bulk_upsert_weather(records)
@@ -172,18 +145,18 @@ def main():
     spark.sparkContext.setLogLevel("WARN")
     
     print(f"Connected to Spark Master: {Config.SPARK_MASTER}")
-    
-    # Initialize Metadata (Create DB/Table) without waiting loop
-    init_iceberg_resources(spark)
-
     print(f"Reading from Kafka: {Config.KAFKA_BOOTSTRAP_SERVERS}/{Config.KAFKA_TOPIC}")
     
+    # Process Kafka stream
     weather_df = process_kafka_stream(spark)
     
     print("Starting dual path processing...")
+    
+    # Path 1: Analytics (Iceberg)
     iceberg_query = write_to_iceberg_analytics(weather_df)
     print(" OLAP path started: Writing aggregates to Iceberg")
     
+    # Path 2: Serving (MongoDB)
     mongodb_query = write_to_mongodb_serving(weather_df)
     print(" OLTP path started: Writing latest data to MongoDB")
     

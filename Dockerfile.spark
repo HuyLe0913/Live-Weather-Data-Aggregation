@@ -9,7 +9,7 @@ RUN pip3 install --no-cache-dir -r /opt/spark/requirements.txt
 # Copy application files
 COPY config.py /opt/spark/work-dir/config.py
 COPY schemas.py /opt/spark/work-dir/schemas.py
-COPY mongodb_writer.py /opt/spark/work-dir/mongodb_writer.py
+COPY mongodb/mongodb_writer.py /opt/spark/work-dir/mongodb/mongodb_writer.py
 COPY spark/spark_streaming_app.py /opt/spark/work-dir/spark_streaming_app.py
 
 # Set working directory

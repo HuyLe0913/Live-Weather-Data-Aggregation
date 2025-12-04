@@ -49,18 +49,6 @@ Access at http://localhost:8082 to see:
 - Task execution
 - Resource metrics
 
-### Application Logs
-```bash
-# View Spark streaming app logs
-docker-compose logs -f spark-streaming
-
-# View Spark Master logs
-docker-compose logs -f spark-master
-
-# View Spark Worker logs
-docker-compose logs -f spark-worker
-```
-
 ## Configuration
 
 Spark is configured to:
@@ -70,49 +58,51 @@ Spark is configured to:
 - **Write to MongoDB**: `mongodb:27017`
 
 ## What Spark Does
+The `spark_streaming_app.py` executes the following pipeline:
 
-1. **Reads** weather data from Kafka topic `weather-data`
-2. **Processes** data in real-time using Structured Streaming
-3. **Aggregates** data into hourly windows
-4. **Writes** aggregated data to Iceberg tables (for analytics)
-5. **Writes** latest data per city to MongoDB (for serving)
+## 1. Ingestion & Parsing
 
-## Scaling
+* **Source**: Connects to the Kafka broker (`kafka:29092`) and subscribes to the `weather-data` topic.
 
-To add more Spark workers:
+* **Deserialization**: Parses JSON payloads using a strict schema defined in `schemas.py`.
 
-```yaml
-# In docker-compose.yml, duplicate spark-worker service
-spark-worker-2:
-  # ... same config as spark-worker
-```
+* **Event Time**: Extracts the `event_timestamp` from the raw data to handle out-of-order events, ensuring analytics are based on when the weather *happened*, not when the data *arrived*.
 
-Or increase worker resources:
-```yaml
-environment:
-  - SPARK_WORKER_MEMORY=4g
-  - SPARK_WORKER_CORES=4
-```
+## 2. Watermarking & Aggregation (OLAP Path)
 
-## Troubleshooting
+Spark maintains a running state to aggregate data for historical analysis.
 
-### Spark app not connecting to Master
-- Check Spark Master is running: `docker-compose ps spark-master`
-- Verify network connectivity
-- Check logs: `docker-compose logs spark-master`
+* **Watermarking (10 minutes)**: Spark waits for late data up to 10 minutes. Events older than this threshold are dropped to keep the state size manageable.
 
-### Out of memory errors
-- Increase worker memory: `SPARK_WORKER_MEMORY=4g`
-- Check Spark Master UI for resource allocation
+* **Tumbling Windows (1 Hour)**: Data is grouped into non-overlapping 1-hour windows (e.g., `10:00-11:00`, `11:00-12:00`).
 
-### Kafka connection issues
-- Verify Kafka is running: `docker-compose ps kafka`
-- Check Kafka bootstrap servers: `kafka:29092`
-- Verify topic exists: `weather-data`
+* **Aggregation**: Calculates statistics per City:
 
-## Resources
+  * `avg/max/min temperature`
 
-- [Spark Documentation](https://spark.apache.org/docs/latest/)
-- [Structured Streaming Guide](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html)
-- [Spark on Docker](https://spark.apache.org/docs/latest/running-on-kubernetes.html)
+  * `avg_humidity`, `avg_pressure`
+
+  * `record_count`
+
+## 3. Dual-Path Routing (Lambda Architecture)
+
+The stream is split into two independent output sinks:
+
+* **Path A: Cold Storage (Analytics)**
+
+  * **Destination**: **Apache Iceberg** tables in **MinIO (S3)**.
+
+  * **Format**: Parquet files tracked by Hive Metastore.
+
+  * **Partitioning**: Physically partitioned by `city`.
+
+  * **Behavior**: **Append Only**. Data is committed only after the window closes (1 hour + 10 mins watermark delay).
+
+* **Path B: Hot Storage (Serving)**
+
+  * **Destination**: **MongoDB** (`weather_db.current_weather`).
+
+  * **Mechanism**: Uses `foreachBatch` to perform fast upserts.
+
+  * **Behavior**: **Real-time**. Updates are visible immediately as batches are processed.
 
