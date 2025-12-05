@@ -1,0 +1,4 @@
+*.sh text eol=lf
+3.  Save the file. 4.  **Renormalize your files** (apply the change) by running these commands in your terminal:powershell
+git add --renormalize .
+git commit -m "Fix line endings for scripts"

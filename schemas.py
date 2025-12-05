@@ -9,9 +9,11 @@ from pyspark.sql.types import (
 def get_weather_raw_schema():
     """
     Schema for raw weather data from API/Kafka.
+    Includes 'dt' (Unix timestamp) often used by Weather APIs.
     """
     return StructType([
-        StructField("timestamp", StringType(), True),
+        StructField("timestamp", StringType(), True), # ISO8601 string
+        StructField("dt", LongType(), True),          # Unix timestamp (seconds)
         StructField("city", StringType(), True),
         StructField("country", StringType(), True),
         StructField("coordinates", MapType(StringType(), DoubleType()), True),

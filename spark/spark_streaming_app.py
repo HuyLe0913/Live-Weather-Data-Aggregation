@@ -4,7 +4,7 @@ Consumes weather data from Kafka and writes to Iceberg (OLAP) and MongoDB (OLTP)
 """
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    from_json, col, to_timestamp, window, avg, max as spark_max, 
+    from_json, col, to_timestamp, window, avg, coalesce, from_unixtime, max as spark_max, 
     min as spark_min, count, current_timestamp, lit
 )
 from pyspark.sql.types import StringType
@@ -59,16 +59,26 @@ def process_kafka_stream(spark):
             col("timestamp").alias("kafka_timestamp")
         ) \
         .select("data.*", "kafka_timestamp") \
-        .withColumn("event_timestamp", to_timestamp(col("timestamp")))
+        .withColumn(
+            "event_timestamp",
+            # 1. Nếu có 'timestamp' (string), thử ép kiểu.
+            # 2. Nếu không, dùng 'dt' (long) convert sang timestamp.
+            # 3. Nếu cả 2 null, dùng giờ Kafka nhận được (kafka_timestamp).
+            coalesce(
+                to_timestamp(col("timestamp")), 
+                to_timestamp(from_unixtime(col("dt"))),
+                col("kafka_timestamp")
+            )
+        )
     
     return weather_df
 
 def write_to_iceberg_analytics(weather_df):
     """Path 1: OLAP - Write aggregated data to Iceberg."""
     hourly_agg = weather_df \
-        .withWatermark("event_timestamp", "10 minutes") \
+        .withWatermark("event_timestamp", "1 minutes") \
         .groupBy(
-            window(col("event_timestamp"), "1 hour"),
+            window(col("event_timestamp"), "5 minutes"),
             col("city"),
             col("country")
         ) \
