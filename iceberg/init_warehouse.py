@@ -42,6 +42,7 @@ def init_warehouse():
                 avg_humidity DOUBLE,
                 avg_pressure DOUBLE,
                 avg_wind_speed DOUBLE,
+                comfort_index STRING,  
                 record_count LONG,
                 processed_at TIMESTAMP
             ) USING iceberg

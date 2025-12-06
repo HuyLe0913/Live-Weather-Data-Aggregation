@@ -5,7 +5,7 @@ Consumes weather data from Kafka and writes to Iceberg (OLAP) and MongoDB (OLTP)
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     from_json, col, to_timestamp, window, avg, coalesce, from_unixtime, max as spark_max, 
-    min as spark_min, count, current_timestamp, lit
+    min as spark_min, count, current_timestamp, lit, udf
 )
 from pyspark.sql.types import StringType
 import sys
@@ -17,6 +17,24 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
 from schemas import get_weather_raw_schema
 from mongodb.mongodb_writer import MongoDBWriter
+
+# Custom UDFs
+def determine_comfort_level(temp, humidity):
+    if temp is None or humidity is None:
+        return "Unknown"
+    if temp >= 35:
+        return "Scorching"
+    elif temp >= 30 and humidity > 70:
+        return "Muggy"
+    elif temp < 15:
+        return "Chilly"
+    elif 20 <= temp < 30:
+        return "Comfortable"
+    else:
+        return "Moderate"   
+    
+comfort_udf = udf(determine_comfort_level, StringType())
+
 
 def create_spark_session():
     """Create Spark session with Iceberg, Kafka, and Checkpointing support."""
@@ -61,24 +79,27 @@ def process_kafka_stream(spark):
         .select("data.*", "kafka_timestamp") \
         .withColumn(
             "event_timestamp",
-            # 1. Nếu có 'timestamp' (string), thử ép kiểu.
-            # 2. Nếu không, dùng 'dt' (long) convert sang timestamp.
-            # 3. Nếu cả 2 null, dùng giờ Kafka nhận được (kafka_timestamp).
             coalesce(
                 to_timestamp(col("timestamp")), 
                 to_timestamp(from_unixtime(col("dt"))),
                 col("kafka_timestamp")
             )
         )
+
+    weather_df = weather_df.withColumn(
+        "comfort_index", 
+        comfort_udf(col("temperature"), col("humidity"))
+    )
     
     return weather_df
 
 def write_to_iceberg_analytics(weather_df):
     """Path 1: OLAP - Write aggregated data to Iceberg."""
+    
     hourly_agg = weather_df \
-        .withWatermark("event_timestamp", "1 minutes") \
+        .withWatermark("event_timestamp", "10 minutes") \
         .groupBy(
-            window(col("event_timestamp"), "5 minutes"),
+            window(col("event_timestamp"), "1 hour"),
             col("city"),
             col("country")
         ) \
@@ -90,7 +111,14 @@ def write_to_iceberg_analytics(weather_df):
             avg("pressure").alias("avg_pressure"),
             avg("wind.speed").alias("avg_wind_speed"),
             count("*").alias("record_count")
-        ) \
+        )
+    
+    hourly_agg = hourly_agg.withColumn(
+        "comfort_index",
+        comfort_udf(col("avg_temperature"), col("avg_humidity"))
+    )
+    
+    query = hourly_agg \
         .select(
             col("window.start").alias("window_start"),
             col("window.end").alias("window_end"),
@@ -102,11 +130,10 @@ def write_to_iceberg_analytics(weather_df):
             col("avg_humidity"),
             col("avg_pressure"),
             col("avg_wind_speed"),
+            col("comfort_index"),
             col("record_count"),
             current_timestamp().alias("processed_at")
-        )
-    
-    query = hourly_agg \
+        ) \
         .writeStream \
         .format("iceberg") \
         .outputMode("append") \
@@ -122,23 +149,25 @@ def write_to_mongodb_serving(weather_df):
     def write_batch_to_mongo(batch_df, batch_id):
         try:
             if batch_df.isEmpty(): return
-            
-            # Convert to Pandas
+
             pdf = batch_df.toPandas()
             records = pdf.to_dict('records')
+
             for record in records:
                 for key, value in record.items():
                     if pd.isnull(value):
                         record[key] = None
-
+            
             if records:
                 mongo_writer = MongoDBWriter()
                 mongo_writer.bulk_upsert_weather(records)
                 mongo_writer.close()
-                print(f"Batch {batch_id}: Written {len(records)} records to MongoDB")
+                print(f"Batch {batch_id}: Written {len(records)} records to MongoDB.")
+                print(f"Sample Comfort Index: {records[0].get('comfort_index', 'N/A')}")
+
         except Exception as e:
             print(f"Error writing batch {batch_id} to MongoDB: {str(e)}")
-    
+
     query = weather_df \
         .writeStream \
         .foreachBatch(write_batch_to_mongo) \
@@ -157,16 +186,13 @@ def main():
     print(f"Connected to Spark Master: {Config.SPARK_MASTER}")
     print(f"Reading from Kafka: {Config.KAFKA_BOOTSTRAP_SERVERS}/{Config.KAFKA_TOPIC}")
     
-    # Process Kafka stream
     weather_df = process_kafka_stream(spark)
     
     print("Starting dual path processing...")
     
-    # Path 1: Analytics (Iceberg)
     iceberg_query = write_to_iceberg_analytics(weather_df)
     print(" OLAP path started: Writing aggregates to Iceberg")
     
-    # Path 2: Serving (MongoDB)
     mongodb_query = write_to_mongodb_serving(weather_df)
     print(" OLTP path started: Writing latest data to MongoDB")
     
