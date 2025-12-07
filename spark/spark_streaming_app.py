@@ -55,6 +55,7 @@ def create_spark_session():
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
         .config("spark.sql.streaming.checkpointLocation", Config.STREAMING_CHECKPOINT_LOCATION) \
+        .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh") \
         .getOrCreate()
 
 def process_kafka_stream(spark):
