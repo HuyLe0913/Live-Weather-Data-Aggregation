@@ -1,15 +1,11 @@
-"""
-Configuration management for weather data pipeline.
-"""
+#Configuration management for weather data pipeline.
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
 class Config:
     """Central configuration class."""
-    
-    # Kafka Configuration
+    #Kafka Configuration
     KAFKA_BOOTSTRAP_SERVERS = os.environ.get(
         "KAFKA_BOOTSTRAP_SERVERS", 
         "kafka.kafka.svc.cluster.local:9092"
@@ -17,12 +13,12 @@ class Config:
     KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "weather-data")
     KAFKA_CONSUMER_GROUP = os.environ.get("KAFKA_CONSUMER_GROUP", "weather-spark-consumer")
     
-    # OpenWeatherMap API Configuration
+    #OpenWeatherMap API Configuration
     OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")
-    CITIES = os.environ.get("CITIES", "Hanoi,Ho Chi Minh City,Da Nang").split(",")
-    COLLECTION_INTERVAL = int(os.environ.get("COLLECTION_INTERVAL", "60"))
+    CITIES = os.environ.get("CITIES", "Hanoi,Ho Chi Minh City,Da Nang").split(",") #default 3 main cities
+    COLLECTION_INTERVAL = int(os.environ.get("COLLECTION_INTERVAL", "60")) #fetch data every 60 seconds
     
-    # MinIO/S3 Configuration
+    #MinIO/S3 Configuration
     MINIO_ENDPOINT = os.environ.get(
         "MINIO_ENDPOINT", 
         "http://minio.storage.svc.cluster.local:9000"
@@ -32,13 +28,13 @@ class Config:
     MINIO_BUCKET = os.environ.get("MINIO_BUCKET", "weather-data")
     WAREHOUSE_PATH = f"s3a://{MINIO_BUCKET}/warehouse"
     
-    # Hive Metastore Configuration
+    #Hive Metastore Configuration
     HIVE_METASTORE_URI = os.environ.get(
         "HIVE_METASTORE_URI", 
         "thrift://hive-metastore.storage.svc.cluster.local:9083"
     )
     
-    # MongoDB Configuration
+    #MongoDB Configuration
     MONGODB_URI = os.environ.get(
         "MONGODB_URI", 
         "mongodb://mongodb.storage.svc.cluster.local:27017"
@@ -46,10 +42,10 @@ class Config:
     MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "weather_db")
     MONGODB_COLLECTION = os.environ.get("MONGODB_COLLECTION", "current_weather")
     
-    # Spark Configuration
+    #Spark Configuration
     SPARK_APP_NAME = os.environ.get("SPARK_APP_NAME", "WeatherDataStreaming")
     SPARK_MASTER = os.environ.get("SPARK_MASTER", "local[*]")
-    # Streaming Configuration
+        #Streaming Configuration
     STREAMING_CHECKPOINT_LOCATION = os.environ.get(
         "STREAMING_CHECKPOINT_LOCATION",
         "/tmp/spark-checkpoints"
@@ -92,7 +88,10 @@ class Config:
     
     @classmethod
     def validate(cls) -> bool:
-        """Validate required configuration."""
+        """
+        Validate required configuration.
+        Check OpenWeather API Key.
+        """
         if not cls.OPENWEATHER_API_KEY:
             print("WARNING: OPENWEATHER_API_KEY not set")
             return False

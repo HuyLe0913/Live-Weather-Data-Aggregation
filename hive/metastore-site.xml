@@ -2,92 +2,133 @@
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
   Hive Metastore Configuration for Docker Compose
-  This configures Hive Metastore to use PostgreSQL and S3-compatible storage (MinIO)
+  Purpose of this setup:
+  - Hive Metastore is used as a metadata catalog
+  - Reference Apache Iceberg tables stored on MinIO (S3-compatible)
+  - Use PostgreSQL to store metastore metadata
 -->
 <configuration>
-  <!-- PostgreSQL Database Configuration -->
+  <!-- ============================= -->
+  <!-- PostgreSQL Metastore Backend Configuration -->
+  <!-- ============================= -->
+
+  <!-- JDBC connection string for the Hive Metastore database.
+       This database stores logical metadata only (tables, schemas, properties). -->
   <property>
     <name>javax.jdo.option.ConnectionURL</name>
     <value>jdbc:postgresql://postgres:5432/metastore</value>
     <description>JDBC connect string for a JDBC metastore</description>
   </property>
   
+  <!-- JDBC driver used to connect to PostgreSQL -->
   <property>
     <name>javax.jdo.option.ConnectionDriverName</name>
     <value>org.postgresql.Driver</value>
     <description>Driver class name for a JDBC metastore</description>
   </property>
   
+  <!-- Database username for Hive Metastore -->
   <property>
     <name>javax.jdo.option.ConnectionUserName</name>
     <value>hive</value>
     <description>Username to use against metastore database</description>
   </property>
   
+  <!-- Database password for Hive Metastore -->
   <property>
     <name>javax.jdo.option.ConnectionPassword</name>
     <value>hive</value>
     <description>password to use against metastore database</description>
   </property>
   
+
+  <!-- ============================= -->
   <!-- Thrift Server Configuration -->
+  <!-- ============================= -->
+
+  <!-- Thrift endpoint where Hive Metastore listens.
+       0.0.0.0 allows access from other Docker containers. -->
   <property>
     <name>hive.metastore.thrift.uris</name>
     <value>thrift://0.0.0.0:9083</value>
     <description>Thrift URI for the remote metastore</description>
   </property>
   
+  <!-- URI used by some clients (Spark, Trino) to locate the metastore -->
   <property>
     <name>hive.metastore.uris</name>
     <value>thrift://0.0.0.0:9083</value>
     <description>Thrift URI for the remote metastore</description>
   </property>
   
-  <!-- Warehouse Directory (S3/MinIO) -->
+
+  <!-- ============================= -->
+  <!-- Iceberg Warehouse Location   -->
+  <!-- ============================= -->
+
+   <!-- Root warehouse directory for all databases and tables.
+       Iceberg table data and Iceberg metadata files are stored here.
+       Hive Metastore only stores references to this location. -->
   <property>
     <name>hive.metastore.warehouse.dir</name>
     <value>s3a://weather-data/warehouse</value>
     <description>Location of default database for the warehouse</description>
   </property>
   
-  <!-- S3/MinIO Configuration -->
+
+   <!-- ============================= -->
+  <!-- MinIO / S3A Configuration    -->
+  <!-- ============================= -->
+
+  <!-- S3-compatible endpoint (MinIO service inside Docker network) -->
   <property>
     <name>fs.s3a.endpoint</name>
     <value>http://minio:9000</value>
     <description>S3 endpoint</description>
   </property>
   
+  <!-- Access key for MinIO -->
   <property>
     <name>fs.s3a.access.key</name>
     <value>rootuser</value>
     <description>S3 access key</description>
   </property>
   
+  <!-- Secret key for MinIO -->
   <property>
     <name>fs.s3a.secret.key</name>
     <value>rootpass123</value>
     <description>S3 secret key</description>
   </property>
   
+  <!-- Path-style access required for MinIO and most S3-compatible services -->
   <property>
     <name>fs.s3a.path.style.access</name>
     <value>true</value>
     <description>Use path-style access</description>
   </property>
   
+   <!-- Disable SSL because MinIO is running over HTTP -->
   <property>
     <name>fs.s3a.connection.ssl.enabled</name>
     <value>false</value>
     <description>Disable SSL for MinIO</description>
   </property>
   
+  <!-- Explicitly select the Hadoop S3A filesystem implementation -->
   <property>
     <name>fs.s3a.impl</name>
     <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
     <description>S3A file system implementation</description>
   </property>
   
-  <!-- Metastore Schema Version -->
+  
+  <!-- ============================= -->
+  <!-- Metastore Schema Management  -->
+  <!-- ============================= -->
+
+  <!-- Allow Hive Metastore to automatically create and migrate
+       PostgreSQL schema tables on startup. -->
   <property>
     <name>hive.metastore.schema.verification</name>
     <value>false</value>
