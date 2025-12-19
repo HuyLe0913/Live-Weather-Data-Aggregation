@@ -102,25 +102,6 @@ services:
     networks:
       - weather-network
 
-  # Data Collector Service
-  # data-collector:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.data_collector
-  #   container_name: weather-data-collector
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-  #     - MONGODB_URI=mongodb://mongodb:27017
-  #   depends_on:
-  #     - kafka
-  #     - mongodb
-  #   networks:
-  #     - weather-network
-  #   restart: unless-stopped
-
-
   #Hive Metastore Database (PostgreSQL) - Store data for Hive Metastore
   postgres:
     image: postgres:15
@@ -170,43 +151,6 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
-
-  #Apache Iceberg REST Catalog Server
-  iceberg-rest:
-    image: tabulario/iceberg-rest:latest
-    container_name: iceberg-rest
-    ports:
-      - "8181:8181"
-    environment:
-      - CATALOG_WAREHOUSE=s3://weather-data/warehouse
-      - CATALOG_BACKEND=jdbc
-      - CATALOG_JDBC_CONNECTION_URI=jdbc:postgresql://postgres:5432/iceberg_catalog
-      - CATALOG_JDBC_DRIVER=org.postgresql.Driver
-      - CATALOG_JDBC_USER=hive
-      - CATALOG_JDBC_PASSWORD=hive
-      - CATALOG_S3_ENDPOINT=http://minio:9000
-      - CATALOG_S3_ACCESS_KEY_ID=rootuser
-      - CATALOG_S3_SECRET_ACCESS_KEY=rootpass123
-      - CATALOG_S3_PATH_STYLE_ACCESS=true
-    depends_on:
-      - postgres
-      - minio
-    networks:
-      - weather-network
-
-  init-iceberg:
-    build:
-      context: .
-      dockerfile: Dockerfile.iceberg_init
-    container_name: init-iceberg
-    depends_on:
-      hive-metastore:
-        condition: service_healthy
-      minio:
-        condition: service_started
-    networks:
-      - weather-network
-    restart: "no"
 
   #Apache Spark - Data Processing Engine
   spark-master:
