@@ -1,6 +1,5 @@
-# version is obsolete in Docker Compose v2, removed to avoid warning
-
 services:
+  #Apache Kafka - Data Broker
   kafka:
     image: apache/kafka:3.9.1
     container_name: kafka
@@ -25,6 +24,8 @@ services:
     networks:
       - weather-network
     restart: unless-stopped
+
+  #Kafdrop - Web UI for Apache Kafka
   kafdrop:
       image: obsidiandynamics/kafdrop:latest
       container_name: kafdrop
@@ -36,53 +37,8 @@ services:
         - weather-network
       depends_on:
         - kafka
-  mongodb:
-    image: mongo:latest
-    container_name: mongodb
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: weather_db
-    volumes:
-      - mongodb_data:/data/db
-    networks:
-      - weather-network
 
-  # Optional: MinIO for S3-compatible storage
-  minio:
-    image: minio/minio:latest
-    container_name: minio
-    ports:
-      - "9002:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: rootuser
-      MINIO_ROOT_PASSWORD: rootpass123
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
-    networks:
-      - weather-network
-
-  # Data Collector Service
-  # data-collector:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.data_collector
-  #   container_name: weather-data-collector
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-  #     - MONGODB_URI=mongodb://mongodb:27017
-  #   depends_on:
-  #     - kafka
-  #     - mongodb
-  #   networks:
-  #     - weather-network
-  #   restart: unless-stopped
-
-  # Apache NiFi - Data Flow Management
+  #Apache NiFi - Data Ingestion
   nifi:
     build:
       context: .
@@ -117,7 +73,55 @@ services:
       - weather-network
     restart: unless-stopped
 
-  # Hive Metastore Database (PostgreSQL)  
+  #MongoDB - Hot-path DB for Serving (NoSQL)
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: weather_db
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - weather-network
+
+  #MinIO - Cold-path for Analytics (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9002:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: rootuser
+      MINIO_ROOT_PASSWORD: rootpass123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - weather-network
+
+  # Data Collector Service
+  # data-collector:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.data_collector
+  #   container_name: weather-data-collector
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+  #     - MONGODB_URI=mongodb://mongodb:27017
+  #   depends_on:
+  #     - kafka
+  #     - mongodb
+  #   networks:
+  #     - weather-network
+  #   restart: unless-stopped
+
+
+  #Hive Metastore Database (PostgreSQL) - Store data for Hive Metastore
   postgres:
     image: postgres:15
     container_name: postgres
@@ -140,7 +144,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Hive Metastore Service
+  #Hive Metastore Service - Manage metadata for MinIO
   hive-metastore:
     build:
       context: .
@@ -167,23 +171,7 @@ services:
       retries: 15
       start_period: 30s
 
-  # Trino - SQL Query Engine
-  trino:
-    image: trinodb/trino:latest
-    container_name: trino
-    ports:
-      - "8090:8080"
-    volumes:
-      - ./trino/catalog:/etc/trino/catalog
-    depends_on:
-      - postgres
-      - minio
-      - hive-metastore
-    networks:
-      - weather-network
-    restart: unless-stopped
-
-  # Apache Iceberg REST Catalog Server
+  #Apache Iceberg REST Catalog Server
   iceberg-rest:
     image: tabulario/iceberg-rest:latest
     container_name: iceberg-rest
@@ -205,6 +193,7 @@ services:
       - minio
     networks:
       - weather-network
+
   init-iceberg:
     build:
       context: .
@@ -218,7 +207,8 @@ services:
     networks:
       - weather-network
     restart: "no"
-  # Apache Spark - Data Processing Engine
+
+  #Apache Spark - Data Processing Engine
   spark-master:
     build:
       context: .
@@ -241,7 +231,8 @@ services:
       - spark-master
     networks:
       - weather-network
-  # Spark Streaming Application
+
+  #Spark Streaming Application
   spark-streaming-app:
     build:
       context: .
@@ -286,7 +277,24 @@ services:
     networks:
       - weather-network
     restart: unless-stopped
-  # Apache Superset - BI and Visualization
+
+  #Trino - SQL Query Engine (for Superset on MinIO)
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog
+    depends_on:
+      - postgres
+      - minio
+      - hive-metastore
+    networks:
+      - weather-network
+    restart: unless-stopped
+
+  #Apache Superset - BI and Visualization
   superset:
     build:
       context: .
