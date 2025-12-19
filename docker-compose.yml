@@ -152,6 +152,21 @@ services:
       retries: 15
       start_period: 30s
 
+  #Apache Iceberg REST Catalog Server
+  init-iceberg:
+    build:
+      context: .
+      dockerfile: Dockerfile.iceberg_init
+    container_name: init-iceberg
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - weather-network
+    restart: "no"
+
   #Apache Spark - Data Processing Engine
   spark-master:
     build:
