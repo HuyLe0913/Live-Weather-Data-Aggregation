@@ -13,7 +13,7 @@ The system is capable of:
 
 -   **Data Ingestion:** Apache NiFi, Apache Kafka
 -   **Data Processing:** Apache Spark
--   **Storage:** MinIO (S3), Apache Iceberg, MongoDB (or Cassandra)
+-   **Storage:** MinIO (S3), Apache Iceberg, MongoDB.
 -   **Metadata/Catalog:** Hive Metastore
 -   **Query Engine:** Trino
 -   **Visualization:** Apache Superset
