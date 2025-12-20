@@ -25,7 +25,7 @@ Iceberg is integrated into the stack through:
 ## Services
 
 ### Trino Iceberg Connector
-- **Catalog**: `iceberg` (configured in `trino/catalog.properties`)
+- **Catalog**: `iceberg` (configured in `trino/catalog/iceberg.properties`)
 - **Warehouse**: `s3a://weather-data/warehouse`
 - **Metadata**: Stored in Hive Metastore
 
