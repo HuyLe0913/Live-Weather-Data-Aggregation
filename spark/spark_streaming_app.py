@@ -1,7 +1,11 @@
 """
 Spark Structured Streaming Application
-Consumes weather data from Kafka and writes to Iceberg (OLAP) and MongoDB (OLTP)
+
+Consumes weather events from Kafka and processes them through two independent paths:
+- OLAP path: Aggregates data and writes to Apache Iceberg (historical analytics)
+- OLTP path: Writes latest state per city to MongoDB (hot serving layer)
 """
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     from_json, col, to_timestamp, window, avg, coalesce, from_unixtime, max as spark_max, 
@@ -12,6 +16,7 @@ import sys
 import os
 import pandas as pd
 
+# Allow imports from project root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
@@ -20,6 +25,7 @@ from mongodb.mongodb_writer import MongoDBWriter
 
 # Custom UDFs
 def determine_comfort_level(temp, humidity):
+    """Derive a human-readable comfort index from temperature and humidity."""
     if temp is None or humidity is None:
         return "Unknown"
     if temp >= 35:
@@ -32,12 +38,24 @@ def determine_comfort_level(temp, humidity):
         return "Comfortable"
     else:
         return "Moderate"   
-    
+
+# Register the Python function as a Spark UDF  
 comfort_udf = udf(determine_comfort_level, StringType())
 
 
+# ---------------------------------------------------------------------
+# Spark Session
+# ---------------------------------------------------------------------
+
 def create_spark_session():
-    """Create Spark session with Iceberg, Kafka, and Checkpointing support."""
+    """
+    Create and configure a SparkSession with:
+        - Kafka source support
+        - Hive Metastore connectivity
+        - Iceberg catalog integration
+        - MinIO (S3A) filesystem support
+        - Structured Streaming checkpointing
+    """
     return SparkSession.builder \
         .appName(Config.SPARK_APP_NAME) \
         .master(Config.SPARK_MASTER) \
@@ -58,8 +76,20 @@ def create_spark_session():
         .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh") \
         .getOrCreate()
 
+
+# ---------------------------------------------------------------------
+# Kafka Ingestion & Normalization
+# ---------------------------------------------------------------------
+
 def process_kafka_stream(spark):
-    """Read and process Kafka stream."""
+    """
+    Read weather events from Kafka and normalize them into a structured DataFrame.
+        - Deserialize JSON payload
+        - Extract event timestamps with fallbacks
+        - Enrich records with derived fields
+    """
+
+    # Read from Kafka as a streaming source
     kafka_df = spark \
         .readStream \
         .format("kafka") \
@@ -69,8 +99,10 @@ def process_kafka_stream(spark):
         .option("failOnDataLoss", "false") \
         .load()
     
+    # Schema for the incoming weather JSON
     weather_schema = get_weather_raw_schema()
-    
+
+    # Parse Kafka key/value and extract timestamps
     weather_df = kafka_df \
         .select(
             col("key").cast(StringType()).alias("message_key"),
@@ -86,7 +118,8 @@ def process_kafka_stream(spark):
                 col("kafka_timestamp")
             )
         )
-
+    
+    # Add comfort index for downstream use
     weather_df = weather_df.withColumn(
         "comfort_index", 
         comfort_udf(col("temperature"), col("humidity"))
@@ -94,9 +127,20 @@ def process_kafka_stream(spark):
     
     return weather_df
 
+
+# ---------------------------------------------------------------------
+# OLAP Path: Iceberg Analytics
+# ---------------------------------------------------------------------
+
 def write_to_iceberg_analytics(weather_df):
-    """Path 1: OLAP - Write aggregated data to Iceberg."""
+    """
+    Aggregate weather data into hourly windows and write to Iceberg.
+        - Append-only
+        - Watermarking for late data
+        - Designed for historical analytics and BI queries
+    """
     
+    # Allow late events up to 10 minutes
     hourly_agg = weather_df \
         .withWatermark("event_timestamp", "10 minutes") \
         .groupBy(
@@ -114,11 +158,13 @@ def write_to_iceberg_analytics(weather_df):
             count("*").alias("record_count")
         )
     
+    # Derive comfort index from aggregated values
     hourly_agg = hourly_agg.withColumn(
         "comfort_index",
         comfort_udf(col("avg_temperature"), col("avg_humidity"))
     )
     
+    # Write aggregated results to Iceberg
     query = hourly_agg \
         .select(
             col("window.start").alias("window_start"),
@@ -145,15 +191,34 @@ def write_to_iceberg_analytics(weather_df):
     
     return query
 
-def write_to_mongodb_serving(weather_df):
-    """Path 2: OLTP - Write latest weather to MongoDB."""
-    def write_batch_to_mongo(batch_df, batch_id):
-        try:
-            if batch_df.isEmpty(): return
 
+# ---------------------------------------------------------------------
+# OLTP Path: MongoDB Serving
+# ---------------------------------------------------------------------
+
+def write_to_mongodb_serving(weather_df):
+    """
+    Write the latest weather state to MongoDB using upsert semantics.
+        - One document per city
+        - Idempotent writes
+        - Optimized for low-latency reads
+    """
+
+    def write_batch_to_mongo(batch_df, batch_id):
+        """
+        Function executed for each micro-batch.
+        Converts Spark DataFrame → Pandas → MongoDB upserts.
+        """
+
+        try:
+            if batch_df.isEmpty(): 
+                return
+
+            # Convert to Pandas for easier bulk upsert handling
             pdf = batch_df.toPandas()
             records = pdf.to_dict('records')
 
+            # Normalize NaN values to None for MongoDB
             for record in records:
                 for key, value in record.items():
                     if pd.isnull(value):
@@ -169,6 +234,7 @@ def write_to_mongodb_serving(weather_df):
         except Exception as e:
             print(f"Error writing batch {batch_id} to MongoDB: {str(e)}")
 
+    # Attach foreachBatch sink to the streaming query
     query = weather_df \
         .writeStream \
         .foreachBatch(write_batch_to_mongo) \
@@ -177,6 +243,11 @@ def write_to_mongodb_serving(weather_df):
         .start()
     
     return query
+
+
+# ---------------------------------------------------------------------
+# Application Entry Point
+# ---------------------------------------------------------------------
 
 def main():
     print("Starting Spark Structured Streaming Application...")
@@ -187,13 +258,16 @@ def main():
     print(f"Connected to Spark Master: {Config.SPARK_MASTER}")
     print(f"Reading from Kafka: {Config.KAFKA_BOOTSTRAP_SERVERS}/{Config.KAFKA_TOPIC}")
     
+    # Ingest and normalize Kafka stream
     weather_df = process_kafka_stream(spark)
     
     print("Starting dual path processing...")
     
+    # OLAP path
     iceberg_query = write_to_iceberg_analytics(weather_df)
     print(" OLAP path started: Writing aggregates to Iceberg")
     
+    # OLTP path
     mongodb_query = write_to_mongodb_serving(weather_df)
     print(" OLTP path started: Writing latest data to MongoDB")
     

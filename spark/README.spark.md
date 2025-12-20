@@ -1,13 +1,24 @@
 # Apache Spark Configuration
 
-Apache Spark is the data processing engine that processes streaming weather data from Kafka and writes to Iceberg and MongoDB.
+Apache Spark is the **central processing engine** in the platform.  
+It consumes streaming weather events from Kafka, performs real-time transformations and aggregations, and writes results to **two different storage layers** optimized for different workloads:
+
+- **Iceberg on MinIO** → analytical / historical (OLAP)
+- **MongoDB** → serving / near-real-time dashboards (OLTP)
+
+Spark does not store data itself; it acts purely as a compute layer.
+
+---
 
 ## Spark Services
 
 ### Spark Master
 - **Port**: 8081 (Web UI), 7077 (Master port)
 - **URL**: http://localhost:8081
-- **Purpose**: Cluster manager that coordinates Spark workers and applications
+- **Purpose**: 
+  - Acts as the cluster manager
+  - Schedules applications and distributes work to Spark workers
+  - Tracks worker health and resource availability
 
 ### Spark Worker
 - **Port**: 8082 (Web UI)
@@ -17,9 +28,13 @@ Apache Spark is the data processing engine that processes streaming weather data
 
 ### Spark Streaming Application
 - **Container**: `spark-streaming-app`
-- **Purpose**: Runs the streaming processing application
+- **Purpose**: Runs the Structured Streaming job defined in `spark_streaming_app.py`
 - **Reads from**: Kafka
-- **Writes to**: Iceberg (MinIO) and MongoDB
+- **Writes to**:
+  - Apache Iceberg (on MinIO) for analytics
+  - MongoDB for serving and dashboards
+
+---
 
 ## Architecture
 
@@ -35,6 +50,8 @@ Spark Worker (executes)
     └─> MongoDB (latest weather)
 ```
 
+---
+
 ## Monitoring
 
 ### Spark Master UI
@@ -49,6 +66,8 @@ Access at http://localhost:8082 to see:
 - Task execution
 - Resource metrics
 
+---
+
 ## Configuration
 
 Spark is configured to:
@@ -56,6 +75,8 @@ Spark is configured to:
 - **Use Iceberg**: Via Hive Metastore at `hive-metastore:9083`
 - **Store data**: MinIO at `s3a://weather-data/warehouse`
 - **Write to MongoDB**: `mongodb:27017`
+
+---
 
 ## What Spark Does
 The `spark_streaming_app.py` executes the following pipeline:
