@@ -1,7 +1,12 @@
 """
 MongoDB Writer Utility
-Writes processed weather data to MongoDB for serving path (OLTP).
+
+Purpose:
+- Writes processed weather data to MongoDB
+- Optimized for the OLTP / serving layer
+- Stores the *latest state per city* rather than historical time series
 """
+
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import ConnectionFailure, BulkWriteError
 from datetime import datetime
@@ -10,7 +15,12 @@ import json
 from config import Config
 
 class MongoDBWriter:
-    """Utility class for writing weather data to MongoDB."""
+    """
+    Utility class responsible for all MongoDB write and read operations:
+    - One document per city (latest snapshot)
+    - Fast reads for APIs / dashboards
+    - Upsert-based writes to avoid duplicates
+    """
     
     def __init__(self, uri: str = None, database: str = None, collection: str = None):
         """
@@ -20,21 +30,30 @@ class MongoDBWriter:
             uri: MongoDB connection URI
             database: Database name
             collection: Collection name
+
+        If arguments are not provided, values are read from Config.
         """
+
+        # Resolve configuration (explicit args override Config defaults)
         self.uri = uri or Config.MONGODB_URI
         self.database_name = database or Config.MONGODB_DATABASE
         self.collection_name = collection or Config.MONGODB_COLLECTION
+
+        # Runtime objects
         self.client = None
         self.db = None
         self.collection = None
+
+        # Initialize connection and indexes
         self._connect()
         self._create_indexes()
     
     def _connect(self):
         """Establish MongoDB connection."""
         try:
-            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
+            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=5000) # Uses a short timeout to fail fast if MongoDB is unavailable
             # Test connection
+            # Pings the server to verify connectivity
             self.client.admin.command('ping')
             self.db = self.client[self.database_name]
             self.collection = self.db[self.collection_name]
@@ -44,7 +63,7 @@ class MongoDBWriter:
             raise
     
     def _create_indexes(self):
-        """Create indexes for optimal query performance."""
+        """Create indexes to support low-latency serving queries."""
         try:
             # Index on city for fast lookups
             self.collection.create_index("city", unique=False)
@@ -61,7 +80,7 @@ class MongoDBWriter:
         Upsert latest weather data for a city.
         
         Args:
-            city: City name
+            city: City name (unique key)
             weather_data: Weather data dictionary
             
         Returns:
@@ -130,6 +149,7 @@ class MongoDBWriter:
         """
         try:
             query = {"city": city} if city else {}
+            # Sort by updated_at descending to get latest record
             result = self.collection.find_one(query, sort=[("updated_at", -1)])
             return result if result else {}
         except Exception as e:
@@ -183,7 +203,14 @@ class MongoDBWriter:
             print("MongoDB connection closed")
 
 def main():
-    """Test function."""
+    """
+    Standalone test entry point.
+
+    Verifies:
+    - MongoDB connectivity
+    - Upsert logic
+    - Read-after-write correctness
+    """
     writer = MongoDBWriter()
     
     # Test data
