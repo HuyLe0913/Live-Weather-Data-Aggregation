@@ -1,4 +1,4 @@
-# 🔌 Connecting Superset to Trino
+# Connecting Superset to Trino
 
 This guide explains how to add **Trino** as a database source in the Superset UI and clarifies how to set up **Trino connections** to provide access to **both Iceberg and MongoDB** through separate catalogs.
 
@@ -7,7 +7,7 @@ All queries are routed through Trino.
 
 ---
 
-## 📝 Prerequisites
+## Prerequisites
 
 * You must have **Admin** access to Superset.
 * The Trino driver (`sqlalchemy-trino`) must already be installed in your Superset instance.
@@ -16,16 +16,20 @@ All queries are routed through Trino.
 
 ---
 
-## 🧠 Architecture Overview
+## Architecture Overview
 Superset
+
 ↓ (SQL)
+
 Trino
+
 ├── iceberg catalog → Iceberg tables on MinIO (historical / OLAP)
+
 └── mongodb catalog → MongoDB collections (hot / serving)
 
 ---
 
-## 🚀 Connection Steps
+## Connection Steps
 
 1.  Log in to Superset.
 2.  Navigate to **Settings** (top right icon) → **Database Connections**.
@@ -35,7 +39,7 @@ Trino
 
 ---
 
-## 🔗 SQLAlchemy URI Format
+## SQLAlchemy URI Format
 
 The connection string follows this standard syntax:
 
