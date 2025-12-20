@@ -101,12 +101,12 @@ curl http://localhost:8181/v1/namespaces/weather_db/tables/hourly_aggregates
 
 ## Features
 
-✅ **ACID Transactions** - Safe concurrent writes
-✅ **Schema Evolution** - Add/remove columns safely
-✅ **Time Travel** - Query historical data versions
-✅ **Hidden Partitioning** - Automatic partition management
-✅ **Metadata Management** - Efficient metadata operations
-✅ **Parquet Format** - Columnar storage for analytics
+- ✅ **ACID Transactions** - Safe concurrent writes
+- ✅ **Schema Evolution** - Add/remove columns safely
+- ✅ **Time Travel** - Query historical data versions
+- ✅ **Hidden Partitioning** - Automatic partition management
+- ✅ **Metadata Management** - Efficient metadata operations
+- ✅ **Parquet Format** - Columnar storage for analytics
 
 ## Troubleshooting
 
