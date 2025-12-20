@@ -1,23 +1,28 @@
 # Apache Iceberg Configuration
 
-Apache Iceberg is an open table format that provides ACID transactions, schema evolution, and time travel queries on your data lake.
+Apache Iceberg is an open table format that provides ACID transactions, schema evolution, and time travel queries on your data lake. 
+Iceberg defines how tables are stored, versioned, and evolved. It is not a storage system or a query engine by itself.
 
 ## Iceberg in This Project
 
 Iceberg is integrated into the stack through:
 
-1. **Trino** - Query Iceberg tables using SQL
-2. **Spark** - Process and write to Iceberg tables
-3. **Hive Metastore** - Stores table metadata
-4. **MinIO** - Stores actual table data (Parquet files)
-5. **Iceberg REST Catalog** - REST API for catalog operations
+1. **Trino** - Query Iceberg tables using SQL. 
+    Trino acts purely as a read/query engine. It never stores data or metadata itself.
+2. **Spark** - Process and write to Iceberg tables.
+    Spark is responsible for table creation, data ingestion, and updates using Iceberg APIs.
+3. **Hive Metastore** - Stores table metadata.
+    Hive Metastore is used as a catalog backend. It stores:
+- Namespaces (databases)
+- Table definitions
+- Iceberg table properties
+- It does not store data files or Iceberg manifest files.
+4. **MinIO** - Stores actual table data (Parquet files).
+    MinIO is the physical storage layer:
+- Parquet data files
+- Iceberg metadata files (metadata.json, manifests, snapshots)
 
 ## Services
-
-### Iceberg REST Catalog Server
-- **Port**: 8181
-- **API Endpoint**: http://localhost:8181
-- **Purpose**: REST API for managing Iceberg catalogs and tables
 
 ### Trino Iceberg Connector
 - **Catalog**: `iceberg` (configured in `trino/catalog.properties`)
@@ -88,8 +93,11 @@ curl http://localhost:8181/v1/namespaces/weather_db/tables/hourly_aggregates
 ## Configuration Files
 
 - **Trino**: `trino/catalog.properties`
+    Defines how Trino connects to Hive Metastore and MinIO
 - **Spark**: `spark_streaming_app.py` (create_spark_session function)
+    Defines Iceberg catalog, warehouse, and S3 access
 - **Hive Metastore**: `hive/metastore-site.xml`
+    Defines metadata storage (PostgreSQL) and warehouse location
 
 ## Features
 

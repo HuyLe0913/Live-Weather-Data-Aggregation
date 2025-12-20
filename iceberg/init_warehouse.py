@@ -1,11 +1,20 @@
 from pyspark.sql import SparkSession
 import sys
-import time
 
 def init_warehouse():
     print("--- Initializing Iceberg Warehouse ---")
     
     # Initialize Spark with Hive support
+    # 1. Set application name in Spark UI/logs: IcebergInit
+    # 2. Set Thrift URI of the standalone Hive Metastore service
+    # 3. Configure so Spark uses Hive Metastore instead of in-memory catalog
+    # 4. Enable Iceberg SQL extensions
+    # 5. Configure Spark's built-in catalog to be an Iceberg catalog
+    # 6. Specify Spark's catalog type to be Hive
+    # 7. Specify Hive Metastore URI used by Iceberg catalog operations
+    # 8. Specify warehouse root directory for Iceberg tables on MinIO
+    # 9. Specify MinIO settings: endpoint, access-key, secret-key, path-style access, file system, SSL.
+
     spark = SparkSession.builder \
         .appName("IcebergInit") \
         .config("hive.metastore.uris", "thrift://hive-metastore:9083") \
